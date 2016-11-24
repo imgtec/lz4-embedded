@@ -7,17 +7,15 @@
         AREA ||i.uacpy||, CODE, READONLY, ALIGN=1
 
 uacpy PROC
-	TST	R0, #3
-	BEQ	__acpy4
+	PUSH	{R4, R5, R6, R7, LR}	
 
-	PUSH	{R0, R4, R5, R6, R7, LR}
-
-	CMP	R2, #4
-        POPLT	{R0, R4, R5, R6, R7, LR}
-	
+; R1 must greater than R0 :(	
+; R2 must greater than 0  8-|
 
 	SUB	R1, R1, R0
 	ADD	R2, R0, R1
+
+; void __uacpy(void *dst, unsigned int seek, unsigned int limit)
 __uacpy
 	AND	R4, R0, #3
 	CMP	R4, #2
@@ -34,13 +32,15 @@ __uacpy
 	STRGTB	R3, [R0]
 	ADDGT	R0, #1
 
-
 	TST	R0, #3
-__bug__
-	BNE	__bug__
+__bug0
+	BNE	__bug0		; bug or wrong usage?
+
+	TST	R2, #3
+	BEQ	wordcpy		; R0, R0+R1 aligned, R2 don't know
 
 
-__cpy4
+__AUcpy3
 	AND	R6, R1, #3	;R0 已经对齐了
 	BIC	R1, #3
 
@@ -51,7 +51,7 @@ __cpy4
 	LDR	R5, [R0]
 	LSL	R5, R5, R6
 	LSR	R5, R5, R6
-__0cpy
+__AUcpy4
 	LDR	R3, [R0, R1]
 	LSR	R4, R3, R7
 	ORR	R4, R5
@@ -60,16 +60,45 @@ __0cpy
 	
 	ADD	R0, #4
 	CMP	R0, R2
-	BLE	__0cpy	; 多复制了差不多一个
-	
+	BLT	__AUcpy4	; need some more to copy?
 
-	
+	SUB	R4, R2, R0
+	CBZ	R4, __done
 
+__overwrite3			; FIXME: 1 to 3 bytes more copied
+	LDR	R3, [R0, R1]
+	LSR	R4, R3, R7
+	ORR	R4, R5
+	STR	R4, [R0]
+	LSL	R5, R3, R6	
+__done
 
+        POP	{R4, R5, R6, R7, LR}
+
+wordcpy3
+	SUBS	R4, R2, R0
+	AND	R4, #3
+	BIC	R3, #3
+
+	LDR	R3, [R0, R1]
+	STR	R3, [R0]
+	ADD	R0, #4
+	CMP	R0, R2
+	BLT	wordcpy
+	CBZ	R4, __done
+
+	CMP	#R4, #2
+	LDR	R3, [R0]
+	LDR	R4, [R0, R1]
+	BFILT	R4, R3, #0, #4
+	BFIEQ	R4, R3, #0, #8
+	BFIGT	R4, R3, #0, #12
+	STR	R4, [R0]
+
+__done
         POP	{R0, R4, R5, R6, R7, LR}
-__acpy4
-	
-	BX	LR
+
+
 lz4data
 	INCBIN	memory-barriers.txt.lz4
         ENDP
