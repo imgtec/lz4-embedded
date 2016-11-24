@@ -7,15 +7,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-
-
-
-char flash[500];
-char dst[1<<18];
-char lz4[];
-
-
-
 int __lz4cpy(char *dst, const char *src, int n)
 {
 	int i = 0;
@@ -112,3 +103,27 @@ void *lz4cpy(void *dst, const void *src, int n)
 
 
 
+#ifdef DEBUG
+char lz4file[] = {
+	#include "test.lz4"
+}
+
+char original[] = {
+	#include "test.bin"
+}
+
+char decoded[sizeof(original)+64];
+
+int main(int argc, char *argv[])
+{
+	int i, error;
+
+	lz4cpy(original, lz4file, sizeof(original));
+	for (int i = 0; i < sizeof(original); ++i) {
+		if(original[i] != decoded[i]) error++;
+	}
+	printf("error: %d\n", error);
+
+	return 0;
+}
+#endif
