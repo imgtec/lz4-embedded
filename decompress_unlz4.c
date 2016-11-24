@@ -79,7 +79,7 @@ int __lz4cpy(char *dst, const char *src, int n)
  */
 void *lz4cpy(void *dst, const void *src, int n)
 {
-	char *p;
+	const char *p;
 	int error;
 
 	p = src;
