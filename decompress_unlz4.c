@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 int __lz4cpy(char *dst, const char *src, int n)
 {
@@ -49,7 +50,7 @@ int __lz4cpy(char *dst, const char *src, int n)
 		if(limit>=n) {
 			error |= 0x80000001;
 			fprintf(stderr, "warning: dest buffer overflow[0x%08x]\n", limit);
-			limit = sizeof(dst);
+			limit = n;
 		}
 		if(j<offset){
 			fprintf(stderr, "bug-bug!: invail offset[%08x]\n", offset);
@@ -80,7 +81,8 @@ void *lz4cpy(void *dst, const void *src, int n)
 {
 	char *p;
 	int error;
-	
+
+	p = src;
 
 	if((p[0] != '\x04')
 		|| (p[1] != '\x22')
@@ -94,7 +96,7 @@ void *lz4cpy(void *dst, const void *src, int n)
 
 	p++;
 
-	src = src + 12;
+	src = (char *)src + 12;
 
 	error = __lz4cpy(dst, src, n);
 	if(error>0) return dst;
@@ -106,11 +108,11 @@ void *lz4cpy(void *dst, const void *src, int n)
 #ifdef DEBUG
 char lz4file[] = {
 	#include "test.lz4"
-}
+};
 
 char original[] = {
 	#include "test.bin"
-}
+};
 
 char decoded[sizeof(original)+64];
 
