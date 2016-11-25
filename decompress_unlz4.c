@@ -29,33 +29,33 @@ int __lz4cpy(char *dst, const char *src, int blocksize)
 	fprintf(stderr, "info: single block decoding...\n");
 
 	fprintf(stderr, "info: block size[%08x]\n", blocksize);
-	//exit(0);
 
 	do {
 		token = (unsigned char)src[i++];
+
 		len = 15U & (token>>4);
 		if(len == 15U) {
 			do {
 				len += (unsigned char)src[i];
 			} while(src[i++] == '\255');
 		}
-		limit = i + len;
-/* len */	while(i<limit) {
+		/* error now is zero, or will not reach here. */
+		limit = j+len;
+		if(limit+12>=blocksize) {
+			error = blocksize;
+			limit = blocksize;
+		}
+/* len */	while(j<limit) {
 			dst[j] = src[i];
 			j++, i++;
 		}
-if(j+12>=blocksize) {
-	int k;
-	for(k=j;k<blocksize;k++){
-		printf("%02X\n", src[k]);
-	}
-	printf("tail: %04x\n", k);
-	goto dump;
-}
+
+		if(error) return j;
+
 		len = 15U & token;
-		
 /* token */	offset  = (unsigned char)src[i++];
-		offset += (unsigned char)src[i++]*256U;
+		/* LSL Rd, Rn, #8 */
+		offset |= (unsigned char)src[i++]<<8U;
 
 		if(len == 15U) {
 			do {
@@ -63,20 +63,11 @@ if(j+12>=blocksize) {
 			} while(src[i++] == '\255');
 		}
 		len += 4;
-/* len */	limit = j + len;
-		if(limit+12>=blocksize) {
-			fprintf(stderr, "warning: block size not match[0x%08x]\n", limit);
-			error |= 0x81000000;
-			limit = blocksize;/* TODO: tail...*/
-			goto dump;
-		} else if(limit+12 == blocksize) {
-			break;
-			error = limit;
-		}
+		limit = j + len;
 		/* check offset */
 		if(offset>j){
 			fprintf(stderr, "bug!: invail offset[%08x]\n", offset);
-			error |= 0x82000000;
+			error |= 0x82000000 | j;
 			#ifdef DEBUG
 			goto dump;
 			#endif
@@ -93,15 +84,8 @@ if(j+12>=blocksize) {
 			error |= 0x88000000;
 		}
 	} while(error == 0);
-
-	if(error<0) return error;
-	while(j<blocksize) {
-		dst[j] = src[i];
-		j++;
-	}
-	error = j;
+	fprintf(stderr, "info: decode done[%08x]\n", error);
 #ifdef DEBUG
-	fprintf(stderr, "info: decode done\n");
 dump:
 	fprintf(stderr, "variable dump\n\n");
 	fprintf(stderr, " block: [%8x]\n", blocksize);
@@ -112,8 +96,6 @@ dump:
 	fprintf(stderr, "   len: [    %04X]\n", len);
 	fprintf(stderr, " limit: [    %04X]\n", limit);
 	fprintf(stderr, "\n");
-
-
 
 	return error;
 #else
@@ -192,7 +174,14 @@ void *lz4cpy(void *dst, const void *src, int n)
 	src = (void *)p;
 
 	error = __lz4cpy(dst, src, blocksize);
-	printf("%04X\n", error); exit(0);
+#ifdef DEBUG
+	if(error & 0xFF000000 == 0) {
+		fprintf(stderr, "info: decoded block size[  %06X]\n", error);
+	} else {
+		fprintf(stderr, "error: decode error[%08x]\n", error);
+	}
+#endif
+	
 	if(error>0) return dst;
 	else return NULL;
 }
@@ -208,7 +197,7 @@ char original[] = {
 	#include "test.bin"
 };
 
-char decoded[sizeof(original)+64];
+char decoded[sizeof(original)];
 
 int main(int argc, char *argv[])
 {
@@ -222,7 +211,7 @@ int main(int argc, char *argv[])
 		else break;
 		if(original[i] != decoded[i]) error++;
 	}
-	printf("error: %x\n", i);
+	printf("bytes error: %x\n", i);
 
 	return 0;
 }
