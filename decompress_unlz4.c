@@ -78,7 +78,7 @@ int __lz4cpy(char *dst, const char *src, int blocksize)
 			dst[j] = dst[j-offset];
 			j++;
 		}
-		if(i>65535) {
+		if(i>1234567) {
 			fprintf(stderr, "info: unknow error[%08x]\n", i);
 			error = j;
 			error |= 0x88000000;
@@ -109,18 +109,18 @@ dump:
 /*
  *
  * ref: https://github.com/lz4/lz4/blob/dev/doc/lz4_Frame_format.md
- * 
+ *
  *
 First of all, technically there is tricky part of the specification: Skippable Frames.But it seems you are new to LZ4 frame format, you can ignore it so far.You can revisit this part after you'll implement other parts.So please forget about Skippable frames.
 If we can ignore skippable frame, first 6 bytes of the LZ4 frame format header always has same structure:
-offset data +0 0x04 +1 0x22 +2 0x4d +3 0x18 +4 FLG of the Frame Descriptor +5 BD of the Frame Descriptor 
+offset data +0 0x04 +1 0x22 +2 0x4d +3 0x18 +4 FLG of the Frame Descriptor +5 BD of the Frame Descriptor
 And if bit 3 of FLG (1<<3 = 0x08, Content Size flag) is 0, header and the first block structure is
-offset data +6 HC of the Frame Descriptor+7 bit [0,7] of the first block size +8 bit [8,15] of the first block size +9 bit [16,23] of the first block size +10 bit [24,31] of the first block size +11... data of the first block (compressed or uncompressed LZ4 raw block)... 
+offset data +6 HC of the Frame Descriptor+7 bit [0,7] of the first block size +8 bit [8,15] of the first block size +9 bit [16,23] of the first block size +10 bit [24,31] of the first block size +11... data of the first block (compressed or uncompressed LZ4 raw block)...
 And if bit 3 of FLG is 1 :
-offset data +6 bit [0,7] of the Content Size +7 bit [8,15] of the Content Size +8 bit [16,23] of the Content Size +9 bit [24,31] of the Content Size +10 bit [32,39] of the Content Size +11 bit [40,47] of the Content Size +12 bit [48,55] of the Content Size +13 bit [56,63] of the Content Size +14 HC of the Frame Descriptor+15 bit [0,7] of the first block size +16 bit [8,15] of the first block size +17 bit [16,23] of the first block size +18 bit [24,31] of the first block size +19... data of the first block (compressed or uncompressed LZ4 raw block)... 
+offset data +6 bit [0,7] of the Content Size +7 bit [8,15] of the Content Size +8 bit [16,23] of the Content Size +9 bit [24,31] of the Content Size +10 bit [32,39] of the Content Size +11 bit [40,47] of the Content Size +12 bit [48,55] of the Content Size +13 bit [56,63] of the Content Size +14 HC of the Frame Descriptor+15 bit [0,7] of the first block size +16 bit [8,15] of the first block size +17 bit [16,23] of the first block size +18 bit [24,31] of the first block size +19... data of the first block (compressed or uncompressed LZ4 raw block)...
  *
 - - - - - - -
- 	[0-3]		04 22 4D 18
+	[0-3]		04 22 4D 18
 	[1]		FLG
 	[1]		BD
 	[1]		HC of the Frame Descriptor
@@ -130,7 +130,7 @@ offset data +6 bit [0,7] of the Content Size +7 bit [8,15] of the Content Size +
 	[...]		data of the first block(s)
 - - - - - - -
 	[4]		block size
-	[..]		block 
+	[..]		block
 - - - - - - -
 	...		more blocks
 - - - - - - -
@@ -158,7 +158,7 @@ void *lz4cpy(void *dst, const void *src, int n)
 			(unsigned char)p[2], (unsigned char)p[3]);
 		return memcpy(dst, src, n);
 	}
-		
+
 	p += 4;
 
 	if(*p & '\x8') p += 8;
@@ -181,7 +181,7 @@ void *lz4cpy(void *dst, const void *src, int n)
 		fprintf(stderr, "error: decode error[%08x]\n", error);
 	}
 #endif
-	
+
 	if(error>0) return dst;
 	else return NULL;
 }
