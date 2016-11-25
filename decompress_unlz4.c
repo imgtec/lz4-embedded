@@ -15,12 +15,12 @@ int __lz4cpy(char *dst, const char *src, int blocksize)
 	int i = 0;
 	int j = 0;
 
-	unsigned int token;
-	unsigned int len;
+	int token;
+	int len;
 	int error = 0;
 #ifdef DEBUG
-	unsigned int limit;
-	unsigned int offset;
+	int limit;
+	int offset;
 #else
 	#define limit len
 	#define offset token
@@ -70,8 +70,9 @@ int __lz4cpy(char *dst, const char *src, int blocksize)
 			error |= 0x82000000 | j;
 			#ifdef DEBUG
 			goto dump;
-			#endif
+			#else
 			return error;
+			#endif
 		}
 		/* copy match */
 		while(j<limit) {
@@ -102,8 +103,6 @@ dump:
 	#undef offset
 	#undef limit
 #endif
-	return error;
-
 }
 
 /*
@@ -150,7 +149,7 @@ void *lz4cpy(void *dst, const void *src, int n)
 	if(n<13)
 		return memcpy(dst, src, n);
 
-	p = src;
+	p = (char *)src;
 
 	if((p[0] != '\x04') || (p[1] != '\x22') || (p[2] != '\x4D') || (p[3] != '\x18')) {
 		fprintf(stderr, "magic not match [%02x %02x %02x %02x]\n",
@@ -173,9 +172,9 @@ void *lz4cpy(void *dst, const void *src, int n)
 
 	src = (void *)p;
 
-	error = __lz4cpy(dst, src, blocksize);
+	error = __lz4cpy((char *)dst, (const char *)src, blocksize);
 #ifdef DEBUG
-	if(error & 0xFF000000 == 0) {
+	if((error & 0xFF000000) == 0) {
 		fprintf(stderr, "info: decoded block size[  %06X]\n", error);
 	} else {
 		fprintf(stderr, "error: decode error[%08x]\n", error);
