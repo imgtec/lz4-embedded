@@ -7,8 +7,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-int __lz4cpy(char *dst, const char *src, int n)
+/*
+ * decode single block to @dst from @src
+ */
+int __lz4cpy(char *dst, const char *src, int blocksize)
 {
 	int i = 0;
 	int j = 0;
@@ -24,7 +26,10 @@ int __lz4cpy(char *dst, const char *src, int n)
 	#define offset token
 #endif
 
-	fprintf(stderr, "info: decoding...\n");
+	fprintf(stderr, "info: single block decoding...\n");
+
+	fprintf(stderr, "info: block size[%08x]\n", blocksize);
+	//exit(0);
 
 	do {
 		token = (unsigned char)src[i++];
@@ -50,82 +55,125 @@ int __lz4cpy(char *dst, const char *src, int n)
 			} while(src[i++] == '\255');
 		}
 		len += 4;
-/* len */		limit = j + len;
-		if(limit>=n) {
-			error |= 0x80000001;
-			fprintf(stderr, "warning: dest buffer overflow[0x%08x]\n", limit);
-			limit = n;
+/* len */	limit = j + len;
+		if(limit>blocksize) {
+			fprintf(stderr, "warning: block size not match[0x%08x]\n", limit);
+			error |= 0x81000000;
+			limit = blocksize;/* TODO: tail...*/
+			goto dump;
+		} else if(limit == blocksize) {
+			error = limit;
 		}
+		/* check offset */
 		if(offset>j){
 			fprintf(stderr, "bug!: invail offset[%08x]\n", offset);
-			error |= 0x80000002;
+			error |= 0x82000000;
 			#ifdef DEBUG
 			goto dump;
 			#endif
 			return error;
 		}
-
+		/* copy match */
 		while(j<limit) {
 			dst[j] = dst[j-offset];
 			j++;
 		}
-		if(j == n) {
-			return n;
-		}
-		if(i+32U>65535) { /* TODO: finish */
-			fprintf(stderr, "info: finish %s", error ? "with error\n" : "\n");
+		if(i>65535) {
+			fprintf(stderr, "info: unknow error[%08x]\n", i);
 			error = j;
+			error |= 0x88000000;
 		}
 	} while(error == 0);
-	return error;
 #ifdef DEBUG
+	fprintf(stderr, "info: decode done\n");
 dump:
 	fprintf(stderr, "variable dump\n\n");
+	fprintf(stderr, " block: [%8x]\n", blocksize);
 	fprintf(stderr, " i(in): [%8x]\n", i);
 	fprintf(stderr, "j(out): [%8x]\n", j);
-	fprintf(stderr, " token: [  %02X]\n", token);
-	fprintf(stderr, "offset: [%04X]\n", offset);
-	fprintf(stderr, "   len: [%04X]\n", len);
-	fprintf(stderr, " limit: [%4d]\n", limit);
+	fprintf(stderr, " token: [------%02X]\n", token);
+	fprintf(stderr, "offset: [----%04X]\n", offset);
+	fprintf(stderr, "   len: [    %04X]\n", len);
+	fprintf(stderr, " limit: [    %04X]\n", limit);
 	fprintf(stderr, "\n");
 	return error;
 #else
 	#undef offset
 	#undef limit
 #endif
+	return error;
 
 }
 
 /*
  *
  * ref: https://github.com/lz4/lz4/blob/dev/doc/lz4_Frame_format.md
+ * 
+ *
+First of all, technically there is tricky part of the specification: Skippable Frames.But it seems you are new to LZ4 frame format, you can ignore it so far.You can revisit this part after you'll implement other parts.So please forget about Skippable frames.
+If we can ignore skippable frame, first 6 bytes of the LZ4 frame format header always has same structure:
+offset data +0 0x04 +1 0x22 +2 0x4d +3 0x18 +4 FLG of the Frame Descriptor +5 BD of the Frame Descriptor 
+And if bit 3 of FLG (1<<3 = 0x08, Content Size flag) is 0, header and the first block structure is
+offset data +6 HC of the Frame Descriptor+7 bit [0,7] of the first block size +8 bit [8,15] of the first block size +9 bit [16,23] of the first block size +10 bit [24,31] of the first block size +11... data of the first block (compressed or uncompressed LZ4 raw block)... 
+And if bit 3 of FLG is 1 :
+offset data +6 bit [0,7] of the Content Size +7 bit [8,15] of the Content Size +8 bit [16,23] of the Content Size +9 bit [24,31] of the Content Size +10 bit [32,39] of the Content Size +11 bit [40,47] of the Content Size +12 bit [48,55] of the Content Size +13 bit [56,63] of the Content Size +14 HC of the Frame Descriptor+15 bit [0,7] of the first block size +16 bit [8,15] of the first block size +17 bit [16,23] of the first block size +18 bit [24,31] of the first block size +19... data of the first block (compressed or uncompressed LZ4 raw block)... 
+ *
+- - - - - - -
+ 	[0-3]		04 22 4D 18
+	[1]		FLG
+	[1]		BD
+	[1]		HC of the Frame Descriptor
+	[3 or 11]	Content
+- - - - - - -
+	[4]		first block size
+	[...]		data of the first block(s)
+- - - - - - -
+	[4]		block size
+	[..]		block 
+- - - - - - -
+	...		more blocks
+- - - - - - -
+	[4]		EndMark
+	[0 or 4]	C. Checksum
+- - - - - - -
+	EOF
+- - - - - - -
  */
+
 void *lz4cpy(void *dst, const void *src, int n)
 {
 	const char *p;
 	int error;
+	int blocksize;
 
 	if(n<13)
 		return memcpy(dst, src, n);
 
 	p = src;
 
-	if((p[0] != '\x04')
-		|| (p[1] != '\x22')
-		|| (p[2] != '\x4D')
-		|| (p[3] != '\x18'))
+	if((p[0] != '\x04') || (p[1] != '\x22') || (p[2] != '\x4D') || (p[3] != '\x18')) {
+		fprintf(stderr, "magic not match [%02x %02x %02x %02x]\n",
+			(unsigned char)p[0], (unsigned char)p[1],
+			(unsigned char)p[2], (unsigned char)p[3]);
 		return memcpy(dst, src, n);
+	}
+		
 	p += 4;
 
 	if(*p & '\x8') p += 8;
 	else p += 3;
 
-	//src = (char *)src + 7;
-	//src = (char *)src + 15;
-	src = (char *)src + 11;
-	//src = (void *)p;
+	/* BFI Rd, Rn, #lsl, #n */
+	blocksize  = (unsigned char)p[3] << 0x18U;
+	blocksize |= (unsigned char)p[2] << 0x10U;
+	blocksize |= (unsigned char)p[1] << 0x08U;
+	blocksize |= (unsigned char)p[0] << 0x00U;
+	p+=4;
 
-	error = __lz4cpy(dst, src, n);
+	src = (void *)p;
+
+	error = __lz4cpy(dst, src, blocksize);
+	printf("%04X\n", error); exit(0);
 	if(error>0) return dst;
 	else return NULL;
 }
@@ -152,9 +200,10 @@ int main(int argc, char *argv[])
 	lz4cpy(decoded, lz4file, sizeof(original));
 	for (i = 0, error = 0; i < sizeof(original); i++) {
 		if(!error) putchar(decoded[i]);
+		else break;
 		if(original[i] != decoded[i]) error++;
 	}
-	printf("error: %d\n", error);
+	printf("error: %x\n", i);
 
 	return 0;
 }
