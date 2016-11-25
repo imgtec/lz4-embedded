@@ -44,6 +44,14 @@ int __lz4cpy(char *dst, const char *src, int blocksize)
 			dst[j] = src[i];
 			j++, i++;
 		}
+if(j+12>=blocksize) {
+	int k;
+	for(k=j;k<blocksize;k++){
+		printf("%02X\n", src[k]);
+	}
+	printf("tail: %04x\n", k);
+	goto dump;
+}
 		len = 15U & token;
 		
 /* token */	offset  = (unsigned char)src[i++];
@@ -56,12 +64,13 @@ int __lz4cpy(char *dst, const char *src, int blocksize)
 		}
 		len += 4;
 /* len */	limit = j + len;
-		if(limit>blocksize) {
+		if(limit+12>=blocksize) {
 			fprintf(stderr, "warning: block size not match[0x%08x]\n", limit);
 			error |= 0x81000000;
 			limit = blocksize;/* TODO: tail...*/
 			goto dump;
-		} else if(limit == blocksize) {
+		} else if(limit+12 == blocksize) {
+			break;
 			error = limit;
 		}
 		/* check offset */
@@ -84,6 +93,13 @@ int __lz4cpy(char *dst, const char *src, int blocksize)
 			error |= 0x88000000;
 		}
 	} while(error == 0);
+
+	if(error<0) return error;
+	while(j<blocksize) {
+		dst[j] = src[i];
+		j++;
+	}
+	error = j;
 #ifdef DEBUG
 	fprintf(stderr, "info: decode done\n");
 dump:
@@ -96,6 +112,9 @@ dump:
 	fprintf(stderr, "   len: [    %04X]\n", len);
 	fprintf(stderr, " limit: [    %04X]\n", limit);
 	fprintf(stderr, "\n");
+
+
+
 	return error;
 #else
 	#undef offset
