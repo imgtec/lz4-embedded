@@ -33,11 +33,18 @@ int __lz4cpy(char *dst, const char *src, int blocksize)
 	do {
 		token = (unsigned char)src[i++];
 
+		fprintf(stderr, "\n[%02x", token);
+		fputc(':', stderr);
+
 		len = 15U & (token>>4);
 		if(len == 15U) {
-			do {
-				len += (unsigned char)src[i];
-			} while(src[i++] == '\255');
+			
+			while(src[i]=='\xFF') {
+				len += (unsigned char)src[i++];
+				fprintf(stderr, "%02x ", 255U & src[i]);
+			}
+			fprintf(stderr, "%02x ", 255U & src[i]);
+			len += (unsigned char)src[i++];
 		}
 		/* error now is zero, or will not reach here. */
 		limit = j+len;
@@ -47,21 +54,34 @@ int __lz4cpy(char *dst, const char *src, int blocksize)
 		}
 /* len */	while(j<limit) {
 			dst[j] = src[i];
+			fprintf(stderr, " %02x", 255U & src[i]);
 			j++, i++;
 		}
 
 		if(error) return j;
 
 		len = 15U & token;
+
+		fprintf(stderr, ", %02x ", 255U & src[i]);
 /* token */	offset  = (unsigned char)src[i++];
-		/* LSL Rd, Rn, #8 */
+		fprintf(stderr, "%02x: ", 255U & src[i]);
 		offset |= (unsigned char)src[i++]<<8U;
 
 		if(len == 15U) {
-			do {
+			while(src[i] == '\xFF') {
 				len += (unsigned char)src[i];
-			} while(src[i++] == '\255');
+				fprintf(stderr, "%02x ", 255U & src[i]);
+				i++;
+			}
+			len += (unsigned char)src[i];
+			fprintf(stderr, "%02x", 255U & src[i]);
+			i++;
+		} else {
+			fprintf(stderr, "(%1x)", len);
 		}
+		fputc(']', stderr);
+		fputc('\n', stderr);
+
 		len += 4;
 		limit = j + len;
 		/* check offset */
@@ -146,6 +166,32 @@ void *lz4cpy(void *dst, const void *src, int n)
 	int error;
 	int blocksize;
 
+#ifdef	DEBUG
+	p = (char *)src;
+	fprintf(stderr, "magic: [%02X %02X %02X %02X]\n", p[0], p[1], p[2], p[3]);
+	/*****************************************************************
+	|   7-6   |    5    |     4     |   3     |     2     |    1-0   |
+	| ------- | ------- | --------- | ------- | --------- | -------- |
+	| Version | B.Indep | B.Checksum| C.Size  | C.Checksum|*Reserved*|
+	*****************************************************************/
+	fprintf(stderr, " flag: [%02X]\n", (unsigned char)p[4]);
+	fprintf(stderr, "      7 6: %02x\n", (unsigned char)(p[4]&(3<<6)));
+	fprintf(stderr, "        5: %02x\n", (unsigned char)(p[4]&(1<<5)));
+	fprintf(stderr, "        4: %02x\n", (unsigned char)(p[4]&(1<<4)));
+	fprintf(stderr, "        3: %02x\n", (unsigned char)(p[4]&(1<<3)));
+	fprintf(stderr, "        2: %02x\n", (unsigned char)(p[4]&(1<<2)));
+
+	/*************************************
+	|     7    |     6-5-4    |  3-2-1-0 |
+	| -------- | ------------ | -------- |
+	|*Reserved*| Block MaxSize|*Reserved*|
+	*************************************/
+	fprintf(stderr, "  BD: [%02X]\n", (unsigned char)p[5]);
+	fprintf(stderr, "     6 5 4:%02X\n", (unsigned char)(p[5]&(7<<4)));
+
+	fprintf(stderr, "block size: [%02X %02X %02X %02X]\n", (unsigned char)p[7], (unsigned char)p[8], (unsigned char)p[9], (unsigned char)p[10]);
+
+#endif	
 	if(n<13)
 		return memcpy(dst, src, n);
 
@@ -187,7 +233,7 @@ void *lz4cpy(void *dst, const void *src, int n)
 
 
 
-#ifdef DEBUG
+#ifdef DEBUG2
 char lz4file[] = {
 	#include "test.lz4"
 };
